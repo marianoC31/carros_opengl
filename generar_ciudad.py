@@ -2,7 +2,8 @@
 Generador procedural de la ciudad para la simulacion multiagente.
 Salida (eje Y hacia arriba, unidades = metros, triangulos, normales planas):
   ciudad.obj / ciudad.mtl     -> escenario estatico (calles, banquetas, edificios, glorieta, arboles)
-  carro.obj  / carro.mtl      -> agente vehiculo (centrado en el origen, mirando hacia +Z)
+  carro.obj  / carro.mtl      -> agente vehiculo (centrado en el origen, mirando hacia +Z, sin llantas)
+  llanta.obj / llanta.mtl     -> llanta individual centrada en el origen (para instanciar y rotar por eje)
   semaforo.obj / semaforo.mtl -> agente semaforo (luces en grupos separados: luz_roja, luz_amarilla, luz_verde)
   red_vial.json               -> grafo de la red: intersecciones, carriles, semaforos, glorieta
 Uso:  python generar_ciudad.py [semilla]
@@ -143,6 +144,7 @@ MATERIALES = {
     "techo": (0.40, 0.38, 0.36), "teja": (0.62, 0.30, 0.22), "tronco": (0.40, 0.27, 0.15),
     "follaje": (0.20, 0.45, 0.18), "monumento": (0.80, 0.80, 0.82),
     "carroceria": (0.80, 0.12, 0.12), "cristal_carro": (0.15, 0.20, 0.28), "llanta": (0.06, 0.06, 0.06),
+    "rin": (0.72, 0.74, 0.78),
     "faro": (1.0, 1.0, 0.85), "calavera": (0.7, 0.0, 0.0),
     "poste": (0.25, 0.25, 0.27), "caja_semaforo": (0.12, 0.12, 0.12),
     "luz_roja": (0.9, 0.05, 0.05), "luz_amarilla": (0.95, 0.75, 0.05), "luz_verde": (0.05, 0.85, 0.2),
@@ -392,18 +394,6 @@ car.poly_out([(-0.85, yb, 1.1), (0.85, yb, 1.1), (0.75, yt, 0.6), (-0.75, yt, 0.
 car.poly_out([(0.85, yb, -1.6), (-0.85, yb, -1.6), (-0.75, yt, -1.1), (0.75, yt, -1.1)], CC)  # medallon
 car.poly_out([(0.85, yb, 1.1), (0.85, yb, -1.6), (0.75, yt, -1.1), (0.75, yt, 0.6)], CC)      # lado +x
 car.poly_out([(-0.85, yb, -1.6), (-0.85, yb, 1.1), (-0.75, yt, 0.6), (-0.75, yt, -1.1)], CC)  # lado -x
-car.grupo("llantas", "llanta")
-for wx in (-0.95, 0.95):
-    for wz in (-1.3, 1.3):
-        segs, r = 12, 0.35
-        pts = [(wz + r*math.cos(2*math.pi*k/segs), 0.35 + r*math.sin(2*math.pi*k/segs)) for k in range(segs)]
-        x0, x1 = (wx - 0.12, wx + 0.12)
-        c = (wx, 0.35, wz)
-        for k in range(segs):
-            (za_, ya), (zb_, yb_) = pts[k], pts[(k+1) % segs]
-            car.poly_out([(x0, ya, za_), (x0, yb_, zb_), (x1, yb_, zb_), (x1, ya, za_)], c)
-        car.poly_out([(x1, y, z) for z, y in pts], (wx - 1, 0.35, wz))
-        car.poly_out([(x0, y, z) for z, y in pts], (wx + 1, 0.35, wz))
 car.grupo("faros", "faro")
 for fx in (-0.6, 0.6):
     car.caja(fx - 0.2, fx + 0.2, 0.7, 0.85, 2.1, 2.14)
@@ -411,6 +401,28 @@ car.grupo("calaveras", "calavera")
 for fx in (-0.6, 0.6):
     car.caja(fx - 0.2, fx + 0.2, 0.7, 0.85, -2.14, -2.1)
 car.guardar(MATERIALES)
+
+# =====================================================================
+# LLANTA INDIVIDUAL (centrada en el origen, eje de giro en X, radio 0.35)
+# =====================================================================
+wheel = Obj("llanta")
+segs, r, r_rin = 12, 0.35, 0.19
+x0, x1 = -0.12, 0.12
+pts = [(r * math.cos(2 * math.pi * k / segs), r * math.sin(2 * math.pi * k / segs)) for k in range(segs)]
+wheel.grupo("neumatico", "llanta")
+for k in range(segs):
+    (za_, ya), (zb_, yb_) = pts[k], pts[(k + 1) % segs]
+    wheel.poly_out([(x0, ya, za_), (x0, yb_, zb_), (x1, yb_, zb_), (x1, ya, za_)], (0, 0, 0))
+wheel.poly_out([(x1, y, z) for z, y in pts], (-1, 0, 0))
+wheel.poly_out([(x0, y, z) for z, y in pts], (1, 0, 0))
+pts_rin = [(r_rin * math.cos(2 * math.pi * k / segs), r_rin * math.sin(2 * math.pi * k / segs)) for k in range(segs)]
+wheel.grupo("rin", "rin")
+wheel.poly_out([(x1 + 0.004, y, z) for z, y in pts_rin], (-1, 0, 0))
+wheel.poly_out([(x0 - 0.004, y, z) for z, y in pts_rin], (1, 0, 0))
+wheel.grupo("aspa", "poste")
+for sx, nx in ((x1 + 0.008, -1), (x0 - 0.008, 1)):
+    wheel.poly_out([(sx, -0.03, -r_rin), (sx, 0.03, -r_rin), (sx, 0.03, r_rin), (sx, -0.03, r_rin)], (nx, 0, 0))
+wheel.guardar(MATERIALES)
 
 # =====================================================================
 # SEMAFORO (base en el origen, poste en y, el brazo se extiende hacia +X,

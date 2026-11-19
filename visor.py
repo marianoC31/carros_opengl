@@ -132,6 +132,8 @@ def punto_en_polilinea(pts, acum, s):
 
 class AgenteCarro:
     LARGO = 4.2
+    RADIO_LLANTA = 0.35
+    LLANTAS_POS = ((-0.95, 0.35, 1.3), (0.95, 0.35, 1.3), (-0.95, 0.35, -1.3), (0.95, 0.35, -1.3))
     DIST_MIN = 2.5          # separacion minima (m)
     T_SEG = 1.2             # tiempo de seguridad (s)
     A_MAX, B_COMODO = 2.5, 4.0
@@ -146,6 +148,7 @@ class AgenteCarro:
         self.cambio = 1.0         # 0..1 progreso visual del cambio de carril
         self.carril_prev = carril
         self.pos, self.yaw = [0, 0, 0], 0.0
+        self.ang_llanta, self.steer = 0.0, 0.0
 
     # ---------- percepcion ----------
     def lider(self):
@@ -272,7 +275,12 @@ class AgenteCarro:
             self.arista, self.carril, self.carril_prev, self.s = sig, carril, carril, sobra
             self.en_cruce = None
 
+        yaw_prev = self.yaw
         self._actualizar_pose()
+        self.ang_llanta = (self.ang_llanta + math.degrees(self.v * dt / self.RADIO_LLANTA)) % 360.0
+        dyaw = (self.yaw - yaw_prev + 180.0) % 360.0 - 180.0
+        objetivo = max(-30.0, min(30.0, (dyaw / dt) * 0.6)) if dt > 0 and self.v > 0.2 else 0.0
+        self.steer += (objetivo - self.steer) * min(1.0, 10.0 * dt)
 
     def _actualizar_pose(self):
         if self.en_cruce:
@@ -388,10 +396,12 @@ def main():
 
     ciudad = ObjModel("ciudad.obj")
     carro = ObjModel("carro.obj")
+    llanta = ObjModel("llanta.obj")
     semaforo = ObjModel("semaforo.obj")
     L_ciudad = ciudad.compilar()
     L_carro_cuerpo = carro.compilar({"carroceria"}, con_color=False)
     L_carro_resto = carro.compilar(set(carro.grupos) - {"carroceria"})
+    L_llanta = llanta.compilar()
     L_sem_base = semaforo.compilar({"poste", "caja_semaforo"})
     L_luz = {m: semaforo.compilar({m}, con_color=False) for m in ("luz_roja", "luz_amarilla", "luz_verde")}
 
@@ -457,6 +467,14 @@ def main():
             glColor3f(*c.color)
             glCallList(L_carro_cuerpo)
             glCallList(L_carro_resto)
+            for wx, wy, wz in c.LLANTAS_POS:
+                glPushMatrix()
+                glTranslatef(wx, wy, wz)
+                if wz > 0:
+                    glRotatef(c.steer, 0, 1, 0)
+                glRotatef(c.ang_llanta, 1, 0, 0)
+                glCallList(L_llanta)
+                glPopMatrix()
             glPopMatrix()
 
         pygame.display.flip()
