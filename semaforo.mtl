@@ -1,0 +1,40 @@
+newmtl caja_semaforo
+Ka 0.036 0.036 0.036
+Kd 0.120 0.120 0.120
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+
+newmtl luz_amarilla
+Ka 0.285 0.225 0.015
+Kd 0.950 0.750 0.050
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+
+newmtl luz_roja
+Ka 0.270 0.015 0.015
+Kd 0.900 0.050 0.050
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+
+newmtl luz_verde
+Ka 0.015 0.255 0.060
+Kd 0.050 0.850 0.200
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+
+newmtl poste
+Ka 0.075 0.075 0.081
+Kd 0.250 0.250 0.270
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+

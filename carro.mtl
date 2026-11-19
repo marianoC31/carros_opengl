@@ -1,0 +1,40 @@
+newmtl calavera
+Ka 0.210 0.000 0.000
+Kd 0.700 0.000 0.000
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+
+newmtl carroceria
+Ka 0.240 0.036 0.036
+Kd 0.800 0.120 0.120
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+
+newmtl cristal_carro
+Ka 0.045 0.060 0.084
+Kd 0.150 0.200 0.280
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+
+newmtl faro
+Ka 0.300 0.300 0.255
+Kd 1.000 1.000 0.850
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+
+newmtl llanta
+Ka 0.018 0.018 0.018
+Kd 0.060 0.060 0.060
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+

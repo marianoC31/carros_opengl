@@ -1,0 +1,128 @@
+newmtl asfalto
+Ka 0.066 0.066 0.072
+Kd 0.220 0.220 0.240
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+
+newmtl banqueta
+Ka 0.210 0.207 0.198
+Kd 0.700 0.690 0.660
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+
+newmtl edificio_1
+Ka 0.234 0.222 0.204
+Kd 0.780 0.740 0.680
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+
+newmtl edificio_2
+Ka 0.165 0.186 0.210
+Kd 0.550 0.620 0.700
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+
+newmtl edificio_3
+Ka 0.246 0.180 0.144
+Kd 0.820 0.600 0.480
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+
+newmtl edificio_4
+Ka 0.180 0.180 0.186
+Kd 0.600 0.600 0.620
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+
+newmtl edificio_5
+Ka 0.264 0.255 0.225
+Kd 0.880 0.850 0.750
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+
+newmtl follaje
+Ka 0.060 0.135 0.054
+Kd 0.200 0.450 0.180
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+
+newmtl linea_amarilla
+Ka 0.285 0.234 0.045
+Kd 0.950 0.780 0.150
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+
+newmtl linea_blanca
+Ka 0.285 0.285 0.285
+Kd 0.950 0.950 0.950
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+
+newmtl monumento
+Ka 0.240 0.240 0.246
+Kd 0.800 0.800 0.820
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+
+newmtl pasto
+Ka 0.105 0.165 0.075
+Kd 0.350 0.550 0.250
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+
+newmtl techo
+Ka 0.120 0.114 0.108
+Kd 0.400 0.380 0.360
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+
+newmtl teja
+Ka 0.186 0.090 0.066
+Kd 0.620 0.300 0.220
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+
+newmtl tronco
+Ka 0.120 0.081 0.045
+Kd 0.400 0.270 0.150
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+
+newmtl vidrio
+Ka 0.090 0.135 0.180
+Kd 0.300 0.450 0.600
+Ks 0.050 0.050 0.050
+Ns 10
+d 1.0
+illum 2
+
