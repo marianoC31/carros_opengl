@@ -1,14 +1,20 @@
 """
 Generador procedural de la ciudad para la simulacion multiagente.
 Salida (eje Y hacia arriba, unidades = metros, triangulos, normales planas):
+  -> en la carpeta modelos/:
   ciudad.obj / ciudad.mtl     -> escenario estatico (calles, banquetas, edificios, glorieta, arboles)
   carro.obj  / carro.mtl      -> agente vehiculo (centrado en el origen, mirando hacia +Z, sin llantas)
   llanta.obj / llanta.mtl     -> llanta individual centrada en el origen (para instanciar y rotar por eje)
   semaforo.obj / semaforo.mtl -> agente semaforo (luces en grupos separados: luz_roja, luz_amarilla, luz_verde)
+  -> en la carpeta datos/:
   red_vial.json               -> grafo de la red: intersecciones, carriles, semaforos, glorieta
-Uso:  python generar_ciudad.py [semilla]
+Uso:  python herramientas/generar_ciudad.py [semilla]
 """
-import json, math, random, sys
+import json, math, os, random, sys
+
+RAIZ = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+MODELOS = os.path.join(RAIZ, "modelos")
+DATOS = os.path.join(RAIZ, "datos")
 
 SEED = int(sys.argv[1]) if len(sys.argv) > 1 else 7
 random.seed(SEED)
@@ -113,7 +119,7 @@ class Obj:
             self.poly([(a[0],y0,a[1]), (b[0],y0,b[1]), (b[0],y1,b[1]), (a[0],y1,a[1])])
 
     def guardar(self, mtl):
-        with open(self.nombre + ".obj", "w") as f:
+        with open(os.path.join(MODELOS, self.nombre + ".obj"), "w") as f:
             f.write(f"# {self.nombre}.obj  - generado por generar_ciudad.py (Y arriba, metros)\n")
             f.write(f"mtllib {self.nombre}.mtl\n")
             for x, y, z in self.v:
@@ -127,7 +133,7 @@ class Obj:
                 for idx, ni in caras:
                     f.write("f " + " ".join(f"{i}//{ni}" for i in idx) + "\n")
         usados = {g[1] for g in self.grupos if g[2]}
-        with open(self.nombre + ".mtl", "w") as f:
+        with open(os.path.join(MODELOS, self.nombre + ".mtl"), "w") as f:
             for m in sorted(usados):
                 r, g, b = mtl[m]
                 f.write(f"newmtl {m}\nKa {r*0.3:.3f} {g*0.3:.3f} {b*0.3:.3f}\nKd {r:.3f} {g:.3f} {b:.3f}\n"
@@ -487,6 +493,6 @@ red = {
                  "sentido": "antihorario visto desde arriba (+Y): angulo theta=atan2(z,x) DISMINUYE"},
     "nodos": nodos, "aristas": aristas, "semaforos": semaforos,
 }
-with open("red_vial.json", "w") as f:
+with open(os.path.join(DATOS, "red_vial.json"), "w") as f:
     json.dump(red, f, indent=1)
 print(f"red_vial.json: {len(nodos)} nodos, {len(aristas)} aristas, {len(semaforos)} semaforos")

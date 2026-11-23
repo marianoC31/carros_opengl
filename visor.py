@@ -11,10 +11,15 @@ Agentes:
                  cambia de carril si el de enfrente va lento, decide ruta al llegar a cada interseccion,
                  y circula la glorieta en sentido antihorario.
 """
-import argparse, json, math, random, sys
+import argparse, json, math, os, random, sys
 import pygame
 from pygame.locals import DOUBLEBUF, OPENGL, QUIT, KEYDOWN, K_ESCAPE, K_SPACE
 from OpenGL.GL import *
+
+# carpetas del proyecto (calculadas desde este archivo, asi funciona desde cualquier directorio)
+RAIZ = os.path.dirname(os.path.abspath(__file__))
+MODELOS = os.path.join(RAIZ, "modelos")
+DATOS = os.path.join(RAIZ, "datos")
 
 
 # =====================================================================
@@ -24,7 +29,7 @@ class ObjModel:
     def __init__(self, ruta):
         self.mats = {}
         self.grupos = {}          # material -> lista de (normal, (v0, v1, v2))
-        base = ruta.rsplit("/", 1)[0] + "/" if "/" in ruta else ""
+        base = os.path.dirname(ruta)
         V, N = [], []
         mat = None
         for linea in open(ruta):
@@ -32,7 +37,7 @@ class ObjModel:
             if not p:
                 continue
             if p[0] == "mtllib":
-                self._leer_mtl(base + p[1])
+                self._leer_mtl(os.path.join(base, p[1]))
             elif p[0] == "v":
                 V.append(tuple(map(float, p[1:4])))
             elif p[0] == "vn":
@@ -394,10 +399,10 @@ def main():
     glClearColor(0.62, 0.78, 0.92, 1)
     glShadeModel(GL_FLAT)
 
-    ciudad = ObjModel("ciudad.obj")
-    carro = ObjModel("carro.obj")
-    llanta = ObjModel("llanta.obj")
-    semaforo = ObjModel("semaforo.obj")
+    ciudad = ObjModel(os.path.join(MODELOS, "ciudad.obj"))
+    carro = ObjModel(os.path.join(MODELOS, "carro.obj"))
+    llanta = ObjModel(os.path.join(MODELOS, "llanta.obj"))
+    semaforo = ObjModel(os.path.join(MODELOS, "semaforo.obj"))
     L_ciudad = ciudad.compilar()
     L_carro_cuerpo = carro.compilar({"carroceria"}, con_color=False)
     L_carro_resto = carro.compilar(set(carro.grupos) - {"carroceria"})
@@ -405,7 +410,7 @@ def main():
     L_sem_base = semaforo.compilar({"poste", "caja_semaforo"})
     L_luz = {m: semaforo.compilar({m}, con_color=False) for m in ("luz_roja", "luz_amarilla", "luz_verde")}
 
-    red = json.load(open("red_vial.json"))
+    red = json.load(open(os.path.join(DATOS, "red_vial.json")))
     sim = Simulacion(red, args.carros)
 
     rot, elev, dist = map(float, args.camara.split(","))
