@@ -1,23 +1,24 @@
 """
 Visor rapido de un solo carrito.
   pip install pygame PyOpenGL
-  python ver_carro.py               # usa carro.obj
-  python ver_carro.py otro.obj      # cualquier otro OBJ
+  python herramientas/visor_obj.py                      # usa modelos/carro.obj
+  python herramientas/visor_obj.py modelos/llanta.obj   # cualquier otro OBJ
 Controles: arrastrar con el mouse = girar, rueda = zoom, C = cambiar color,
            ESPACIO = activar/desactivar giro automatico, ESC = salir
 """
-import math, sys
+import math, os, sys
 import pygame
 from pygame.locals import *
 from OpenGL.GL import *
 
-RUTA = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("--") else "carro.obj"
+MODELOS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "modelos")
+RUTA = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("--") else os.path.join(MODELOS, "carro.obj")
 COLORES = [(0.8, 0.1, 0.1), (0.1, 0.3, 0.8), (0.95, 0.75, 0.1), (0.2, 0.6, 0.3), (0.9, 0.9, 0.9), (0.15, 0.15, 0.15)]
 
 
 def cargar_obj(ruta):
     """regresa {material: [(normal, v0, v1, v2), ...]} y {material: color}"""
-    carpeta = ruta.rsplit("/", 1)[0] + "/" if "/" in ruta else ""
+    carpeta = os.path.dirname(ruta)
     V, N, grupos, colores, mat = [], [], {}, {}, None
     for linea in open(ruta):
         p = linea.split()
@@ -25,7 +26,7 @@ def cargar_obj(ruta):
             continue
         if p[0] == "mtllib":
             actual = None
-            for l in open(carpeta + p[1]):
+            for l in open(os.path.join(carpeta, p[1])):
                 q = l.split()
                 if q and q[0] == "newmtl":
                     actual = q[1]
