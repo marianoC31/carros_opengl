@@ -18,6 +18,17 @@ def lerp(a,b,t):
     """punto entre a y b: t=0 -> a, t = 1 -> b, t=0.5 -> a la mitad"""
     return [a[k]+(b[k]-a[k])* t for k in range(3)]
 
+def bezier(a, ctrl, b, n = 12):
+    """Curva de Bezier cuadrática: sale de 'a', llega a 'b' y la 'jala' el punto
+    'ctrl'.
+        Regresa n+1 puntos sobre la curva
+    """
+    pts = []
+    for k in range(n+1):
+        u = k / n
+        pts.append([(1-u) ** 2 * a[i] + 2 * (1-u) * u * ctrl[i] + u **2 *b[i] for i in range(3)])
+        
+    return pts
 
 class Red:
     def __init__(self, ruta= RUTA_RED):
@@ -69,6 +80,25 @@ class Red:
         d = arista["direccion"]
         yaw = math.degrees(math.atan2(d[0], d[2]))
         return pos, yaw
+    
+    def curva_en_cruce(self, arista, carril, sig, carril_sig):
+        """puntos que recorre un carro DENTRO del cruce: desde la linea de alto de 'arista'
+            (en su 'carril') hasta el incio de la calle 'sig' (en 'carril_sig')
+        """
+        a = arista["carriles"][carril]["fin"]
+        b = sig["carriles"][carril_sig]["inicio"]
+        d1, d2 = arista["direccion"], sig["direccion"]
+        cruz = d1[0] * d2[2] - d1[2] * d2[0]
+        
+        if abs(cruz) < 1e-6:
+                #sigo derecho no hay esquina
+            ctrl = lerp(a,b,0.5)
+        else:
+            #doy vuelta: el control es la esquina donde se cruzan las lines del carril
+            t = ((b[0]-a[0]) * d2[2] - (b[2] - a[2]) * d2[0]) / cruz
+            ctrl = [a[0] + d1[0] * t, 0.0, a[2] + d1[2] * t]
+            
+        return bezier(a, ctrl, b)
 #-----------------------------------
 #Prueba rápida 
 #-----------------------------------
@@ -94,3 +124,7 @@ if __name__ == "__main__":
     for carril, s in ((1, 0), (1, 18.5), (1, 37), (0, 18.5)):
         pos, yaw = red.punto_en_carril(calle, carril, s)
         print("carril", carril, "a", s, "m ->", pos, "mirando a", yaw, "grados")
+    for id_sig, nombre in (("1_0->2_0", "derecho"), ("1_0->1_1", "vuelta")):
+        pts = red.curva_en_cruce(calle, 1, red.aristas[id_sig], 1)
+        mitad = [round(v, 2) for v in pts[6]]
+        print(nombre, "->", len(pts), "puntos | inicio", pts[0], "| mitad", mitad, "| fin", pts[-1])
