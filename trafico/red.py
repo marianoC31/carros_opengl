@@ -30,6 +30,29 @@ def bezier(a, ctrl, b, n = 12):
         
     return pts
 
+def longitudes_acumuladas(pts):
+    """Para cada punto de la curva: cuantos metros hay desde el primer punto, siguiendo la curva"""
+    acum = [0.0]
+    for k in range(1, len(pts)):
+        acum.append(acum[-1] + math.dist(pts[k-1], pts[k]))
+    return acum
+
+def punto_en_curva(pts,acum,s):
+    """posicion (x,y,z) y yaw de un carro que lleva 's' metros recorridos
+    sobre la curva 'pts'"""
+    
+    s = max(0.0, min(s, acum[-1]))
+    for k in range(1, len(pts)):
+        if s <= acum[k]:
+            
+            tramo = max(acum[k] - acum[k-1], 1e-9)
+            t = (s - acum[k-1]) / tramo
+            
+            pos = lerp(pts[k-1], pts[k], t)
+            d = [pts[k][i] - pts[k-1][i] for i in range(3)]
+            
+            yaw = math.degrees(math.atan2(d[0], d[2]))
+            return pos, yaw
 class Red:
     def __init__(self, ruta= RUTA_RED):
         with open (ruta) as f:
