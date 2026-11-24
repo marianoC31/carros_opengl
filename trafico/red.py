@@ -17,31 +17,33 @@ RUTA_RED = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..","datos"
 def lerp(a,b,t):
     """punto entre a y b: t=0 -> a, t = 1 -> b, t=0.5 -> a la mitad"""
     return [a[k]+(b[k]-a[k])* t for k in range(3)]
+
+
 class Red:
     def __init__(self, ruta= RUTA_RED):
         with open (ruta) as f:
             datos = json.load(f)
             
             
-            #diccionarios id -> objeto, para encontrar cosas al instante por nombresinski
+        #diccionarios id -> objeto, para encontrar cosas al instante por nombresinski
+        
+        self.nodos = {n["id"]: n for n in datos["nodos"]}
+        self.aristas = {a["id"]: a for a in datos["aristas"]}
+        self.glorieta = datos["glorieta"]
+        
+        #índices: para cada nodo las aristas que salen de el y las que 
+        self.salientes = {nid: [] for nid in self.nodos}
+        self.entrantes = {nid: [] for nid in self.nodos}
+        
+        for a in self.aristas.values():
+            self.salientes[a["origen"]].append(a)
+            self.entrantes[a["destino"]].append(a)
             
-            self.nodos = {n["id"]: n for n in datos["nodos"]}
-            self.aristas = {a["id"]: a for a in datos["aristas"]}
-            self.glorieta = datos["glorieta"]
+        # semaforos: indice id de arista -> semaforo que la controla
+        # (las 4 calles que llegan a la glorieta No tienen semaforo)
             
-            #índices: para cada nodo las aristas que salen de el y las que 
-            self.salientes = {nid: [] for nid in self.nodos}
-            self.entrantes = {nid: [] for nid in self.nodos}
-            
-            for a in self.aristas.values():
-                self.salientes[a["origen"]].append(a)
-                self.entrantes[a["destino"]].append(a)
-                
-            # semaforos: indice id de arista -> semaforo que la controla
-            # (las 4 calles que llegan a la glorieta No tienen semaforo)
-                
-            self.semaforos = datos["semaforos"]
-            self.semaforo_de = {s["controla_arista"]: s for s in self.semaforos}    
+        self.semaforos = datos["semaforos"]
+        self.semaforo_de = {s["controla_arista"]: s for s in self.semaforos}    
                 
     def opciones_en_cruce(self,arista):
         """calles que puedo tomar al final de la calle"""
@@ -50,6 +52,7 @@ class Red:
         if not opciones:
             opciones = self.salientes[cruce]
         return opciones
+    
     def semaforo_de_arista(self, arista):
         """en el semaforo al final de esta calle, o None si no tiene (glorieta)"""
         return self.semaforo_de.get(arista["id"])
