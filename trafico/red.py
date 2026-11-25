@@ -110,6 +110,10 @@ class Red:
         """
         a = arista["carriles"][carril]["fin"]
         b = sig["carriles"][carril_sig]["inicio"]
+        
+        if self.es_glorieta(arista["destino"]):
+            return self.curva_glorieta(a,b)
+        
         d1, d2 = arista["direccion"], sig["direccion"]
         cruz = d1[0] * d2[2] - d1[2] * d2[0]
         
@@ -122,6 +126,28 @@ class Red:
             ctrl = [a[0] + d1[0] * t, 0.0, a[2] + d1[2] * t]
             
         return bezier(a, ctrl, b)
+    
+    def curva_glorieta(self, a, b):
+        """arco alrededor de la isla, en sentido antihorario, desde la entrada 'a'
+        hasta la salida 'b'"""
+        cx,_, cz = self.glorieta["centro"]
+        r = self.glorieta["radios_carriles"][1] # radio del carril exterior
+        ang_a = math.atan2(a[2] - cz, a[0] - cx) #angulo de la entrada
+        ang_b = math.atan2(b[2] - cz, b[0] - cx) # angulo de la salida
+        #cuando hay que girar el ángulo disminuye.
+        #ang_a - ang_b %2pi lo deja entre 0 y una vuelta completa 
+        giro = (ang_a - ang_b) % (2 * math.pi)
+        if giro < 0.3:
+            #salida junto a la entrada hay que dar la vuelta entera
+            
+            giro += 2 * math.pi
+        n = max(4, int(giro*8))
+        pts = [a]
+        for k in range(n + 1):
+            ang = ang_a - giro* k/ n
+            pts.append([cx + r * math.cos(ang), 0.0, cz + r * math.sin(ang)])
+        pts.append(b)
+        return pts
 #-----------------------------------
 #Prueba rápida 
 #-----------------------------------
@@ -151,3 +177,10 @@ if __name__ == "__main__":
         pts = red.curva_en_cruce(calle, 1, red.aristas[id_sig], 1)
         mitad = [round(v, 2) for v in pts[6]]
         print(nombre, "->", len(pts), "puntos | inicio", pts[0], "| mitad", mitad, "| fin", pts[-1])
+    entrada = red.aristas["1_2->2_2"]
+    for id_sig, nombre in (("2_2->2_3", "derecha"), ("2_2->3_2", "derecho"), ("2_2->2_1", "izquierda")):
+        pts = red.curva_en_cruce(entrada, 1, red.aristas[id_sig], 1)
+        acum = longitudes_acumuladas(pts)
+        print("glorieta", nombre, "->", len(pts), "puntos, mide", round(acum[-1], 1), "m")
+        
+        
