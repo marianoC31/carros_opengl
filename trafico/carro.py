@@ -11,12 +11,19 @@ Estado del carro:
 """
 
 import random
+import math
 
-from red import Red, longitudes_acumuladas, punto_en_curva
+from trafico.red import Red, longitudes_acumuladas, punto_en_curva
 
 
 class Carro:
     LARGO = 4.2 #metros
+    
+    A_MAX = 2.5
+    B_COMODO = 4.0
+    DIST_MIN = 2.5
+    T_SEG = 1.2
+    
     
     def __init__(self, red, arista, carril, s, v = 8.0):
         self.red = red
@@ -25,6 +32,7 @@ class Carro:
         self.s = s
         self.v = v
         self.cruce = None
+        self.factor_vel = 1.0 # 1.0 respeta limite, 1.2 va mas rápido
         self.pos, self.yaw = red.punto_en_carril(arista, carril, s)
         
     def en_cruce(self):
@@ -32,7 +40,22 @@ class Carro:
     
     #----paso del tiempo---
     
+    def acel_idm(self, gap=None, v_lider=None):
+        """Inteligent Driver Model: cuanto acelerar(+) o frenar(-) en m/s^2.
+        gap = metros libres hasta lo que tengo enfrente (None 0 calle libre)
+        v_lider = velocidad de lo que tengo frente"""
+        v0 = self.arista["vel_max"] *  self.factor_vel
+        libre = 1 - (self.v / v0) ** 4
+        if gap is None:
+            return self.A_MAX *  libre
+        dv = self.v - v_lider
+        
+        s_deseada = self.DIST_MIN + max(0.0, self.v * self.T_SEG
+                                        + self.v * dv / (2*  math.sqrt(self.A_MAX * self.B_COMODO)))
+        return self.A_MAX * (libre - (s_deseada / max(gap, 0.1)) ** 2)
     def step(self, dt):
+        acc = self.acel_idm()
+        self.v = max(0.0, self.v + acc * dt)
         self.s += self.v * dt
         if not self.en_cruce() and self.s >= self.arista["longitud"]:
             self._entrar_al_cruce()
@@ -65,20 +88,23 @@ class Carro:
         else:
             self.pos, self.yaw = self.red.punto_en_carril(self.arista, self.carril, self.s)
 if __name__ == "__main__":
-    random.seed(3)
     red = Red()
-    carro = Carro(red, red.aristas["0_0->1_0"], carril=1, s=0.0, v=10.0)
-    dt = 0.5
-    antes = None
-    for paso in range(1, 61):                       # 60 pasos de 0.5 s = 30 segundos
+    dt = 0.1
+    print("1) arrancando desde 0, calle libre (limite 13.9 m/s = 50 km/h):")
+    carro = Carro(red, red.aristas["0_0->1_0"], carril=1, s=0.0, v=0.0)
+    for paso in range(1, 151):
         carro.step(dt)
-        if carro.en_cruce():
-            donde = "cruzando hacia " + carro.cruce["sig"]["id"]
-        else:
-            donde = "en la calle " + carro.arista["id"]
-        if donde != antes:                          # solo imprimir cuando cambia de lugar
-            print(f"t={paso * dt:5.1f}s  {donde:<28} pos={[round(c, 1) for c in carro.pos]}")
-            antes = donde          
-        
+        if paso % 10 == 0:
+            print(f"   t={paso * dt:4.1f}s  v={carro.v:5.2f} m/s  ({carro.v * 3.6:4.1f} km/h)")
+
+    print("2) a 50 km/h, hay un carro DETENIDO 60 m adelante:")
+    carro = Carro(red, red.aristas["0_0->1_0"], carril=1, s=0.0, v=13.9)
+    x = 0.0
+    for paso in range(1, 151):
+        acc = carro.acel_idm(gap=60.0 - x, v_lider=0.0)
+        carro.v = max(0.0, carro.v + acc * dt)
+        x += carro.v * dt
+        if paso % 10 == 0:
+            print(f"   t={paso * dt:4.1f}s  v={carro.v:5.2f} m/s  acel={acc:6.2f} m/s2  distancia libre={60.0 - x:5.1f} m")        
         
     
