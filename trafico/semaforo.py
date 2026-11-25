@@ -22,7 +22,7 @@ CICLO = 2 * (T_VERDE + T_AMARILLO + T_TODO_ROJO) #33s
 
 class Semaforo(ap.Agent):
     def setup(self, nodo_id, desfase = 0.0):
-        self.id = nodo_id
+        self.nodo = nodo_id
         self.t = desfase % CICLO
         
     def step(self, dt):
