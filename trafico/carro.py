@@ -69,9 +69,49 @@ class Carro:
         if estado == ROJO or (estado == AMARILLO and restante > dist_frenado + 1):
             return self.acel_idm(gap=restante, v_lider = 0.0)
         return None
+    
+    def _distancia_a(self, o):
+        """metros (de centro a centro) hasta el carro 'o' si va DELANTE de mi, en mi camino.
         
-    def step(self, dt, semaforos = None):
+        Si no va en mi camino, None."""
+        
+        mismo_carril = o.carril == self.carril
+        if not self.en_cruce():
+            #yo voy en la calle
+            if o.arista is self.arista and mismo_carril:
+                if not o.en_cruce() and mismo_carril:
+                    if not o.en_cruce() and o.s > self.s:
+                        return o.s - self.s
+                    if o.en_cruce():
+                        return (self.arsita["longitud"] - self.s) + o 
+                return None
+            #yo voy en el cruce
+        if o.en_cruce() and o.arista is self.arista and mismo_carril and o.s > self.s:
+            return o.s - self.s
+        if not o.en_cruce() and o.arista is self.cruce["sig"] and mismo_carril:
+            return (self.cruce["acum"][-1] - self.s) + o.s 
+        return None
+        
+    def _ver_lider(self, carros):
+        """el carro mas cercano enfrente"""
+        mas_cerca, v_lider = None, None
+        for o in carros:
+            if o is self:
+                continue
+            d = self._distancia_a(o)
+            if d is not None and (mas_cerca is None or d < mas_cerca):
+                mas_cerca, v_lider = d, o.v
+        if mas_cerca is None:
+            return None, None
+        return mas_cerca - self.LARGO, v_lider
+    
+    
+    def step(self, dt, semaforos = None, carros = None):
         acc = self.acel_idm()
+        if carros:
+            gap, v_lider = self._ver_lider(carros)
+            if gap is not None:
+                acc = min(acc, self.acel_idm(gap, v_lider))     
         if semaforos:
             acc_sem = self._acel_por_semaforo(semaforos)
             if acc_sem is not None:
@@ -110,22 +150,18 @@ class Carro:
         else:
             self.pos, self.yaw = self.red.punto_en_carril(self.arista, self.carril, self.s)
 if __name__ == "__main__":
-    random.seed(3)
+    random.seed(1)
     red = Red()
     dt = 0.1
-    # un agente semaforo por cada interseccion (menos la glorieta)
-    semaforos = {n: Semaforo(n, desfase=14.0) for n in red.nodos if not red.es_glorieta(n)}
-    carro = Carro(red, red.aristas["0_0->1_0"], carril=1, s=0.0, v=13.9)
-    for paso in range(1, 301):
-        carro.step(dt, semaforos)
+    calle = red.aristas["0_0->1_0"]
+    lento = Carro(red, calle, carril=1, s=25.0, v=5.0)
+    lento.factor_vel = 5.0 / 13.9               # este conductor quiere ir a 5 m/s (18 km/h)
+    rapido = Carro(red, calle, carril=1, s=0.0, v=13.9)
+    carros = [lento, rapido]
+    for paso in range(1, 151):
+        for c in carros:
+            c.step(dt, carros=carros)
         if paso % 10 == 0:
-            if carro.en_cruce():
-                donde = "cruzando"
-            else:
-                info = red.semaforo_de_arista(carro.arista)
-                luz = "ninguna" if info is None else semaforos[info["interseccion"]].estado(info["grupo_fase"])
-                donde = f"{carro.arista['id']}  luz={luz:<8} faltan {carro.arista['longitud'] - carro.s:4.1f} m"
-            print(f"t={paso * dt:4.1f}s  v={carro.v:5.2f} m/s  {donde}")
-        for sem in semaforos.values():
-            sem.step(dt)                            # los semaforos tambien viven en el tiempo        
-    
+            gap, _ = rapido._ver_lider(carros)
+            dist = "nadie enfrente" if gap is None else f"distancia libre {gap:5.1f} m"
+            print(f"t={paso * dt:4.1f}s  rapido v={rapido.v:5.2f}  lento v={lento.v:4.2f}  {dist}")    
