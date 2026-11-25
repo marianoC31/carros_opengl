@@ -10,7 +10,7 @@ Nunca estan los dos en verde al mismo tiempo.
 
 SIN OPENGL
 """
-
+import agentpy as ap
 VERDE, AMARILLO, ROJO = "verde", "amarillo", "rojo"
 
 #duracion de cada fase
@@ -20,8 +20,8 @@ T_AMARILLO = 3.0
 T_TODO_ROJO = 1.5
 CICLO = 2 * (T_VERDE + T_AMARILLO + T_TODO_ROJO) #33s
 
-class Semaforo:
-    def __init__(self, nodo_id, desfase = 0.0):
+class Semaforo(ap.Agent):
+    def setup(self, nodo_id, desfase = 0.0):
         self.id = nodo_id
         self.t = desfase % CICLO
         
@@ -42,10 +42,11 @@ class Semaforo:
         return ROJO 
 
 if __name__ == "__main__":
-    sem = Semaforo("1_1")
+    modelo = ap.Model()                     # todo agente vive dentro de un modelo
+    sem = Semaforo(modelo, nodo_id="1_1")
+    print("semaforo del cruce", sem.nodo, "| id de agentpy:", sem.id)
     print("ciclo completo:", CICLO, "s")
-    print(" t(s) grupo x grupo z")
+    print(" t(s)   grupo x    grupo z")
     for k in range(23):
-        print(f"{sem.t:5.1f} {sem.estado('x'):<9} {sem.estado('z')}")
-        sem.step(1.5)       
-    
+        print(f"{sem.t:5.1f}   {sem.estado('x'):<9}  {sem.estado('z')}")
+        sem.step(1.5)    
