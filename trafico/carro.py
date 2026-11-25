@@ -79,12 +79,11 @@ class Carro:
         if not self.en_cruce():
             #yo voy en la calle
             if o.arista is self.arista and mismo_carril:
-                if not o.en_cruce() and mismo_carril:
-                    if not o.en_cruce() and o.s > self.s:
-                        return o.s - self.s
-                    if o.en_cruce():
-                        return (self.arsita["longitud"] - self.s) + o 
-                return None
+                if not o.en_cruce() and o.s > self.s:
+                    return o.s - self.s
+                if o.en_cruce():
+                    return (self.arista["longitud"] - self.s) + o.s 
+            return None
             #yo voy en el cruce
         if o.en_cruce() and o.arista is self.arista and mismo_carril and o.s > self.s:
             return o.s - self.s
