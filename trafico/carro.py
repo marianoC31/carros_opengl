@@ -76,7 +76,6 @@ class Carro:
             acc_sem = self._acel_por_semaforo(semaforos)
             if acc_sem is not None:
                 acc = min(acc, acc_sem)
-            self.v = max(0.0, self.v + acc *dt)
             
         self.v = max(0.0, self.v + acc * dt)
         self.s += self.v * dt
