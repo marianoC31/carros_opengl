@@ -14,6 +14,7 @@ import random
 import math
 
 from trafico.red import Red, longitudes_acumuladas, punto_en_curva
+from trafico.semaforo import AMARILLO, ROJO, Semaforo
 
 
 class Carro:
@@ -53,8 +54,30 @@ class Carro:
         s_deseada = self.DIST_MIN + max(0.0, self.v * self.T_SEG
                                         + self.v * dv / (2*  math.sqrt(self.A_MAX * self.B_COMODO)))
         return self.A_MAX * (libre - (s_deseada / max(gap, 0.1)) ** 2)
-    def step(self, dt):
+    
+    def _acel_por_semaforo(self, semaforos):
+        """si debo deterneme en la linea de alto; la acelereación para hacerlo"""
+        if self.en_cruce():
+            return None #ya crucé
+        info = self.red.semaforo_de_arista(self.arista)
+        if info is None: #glorieta
+            return None
+        
+        estado = semaforos[info["interseccion"]].estado(info["grupo_fase"])
+        restante = self.arista["longitud"] - self.s
+        dist_frenado = self.v ** 2 / (2* self.B_COMODO)
+        if estado == ROJO or (estado == AMARILLO and restante > dist_frenado + 1):
+            return self.acel_idm(gap=restante, v_lider = 0.0)
+        return None
+        
+    def step(self, dt, semaforos = None):
         acc = self.acel_idm()
+        if semaforos:
+            acc_sem = self._acel_por_semaforo(semaforos)
+            if acc_sem is not None:
+                acc = min(acc, acc_sem)
+            self.v = max(0.0, self.v + acc *dt)
+            
         self.v = max(0.0, self.v + acc * dt)
         self.s += self.v * dt
         if not self.en_cruce() and self.s >= self.arista["longitud"]:
@@ -88,23 +111,22 @@ class Carro:
         else:
             self.pos, self.yaw = self.red.punto_en_carril(self.arista, self.carril, self.s)
 if __name__ == "__main__":
+    random.seed(3)
     red = Red()
     dt = 0.1
-    print("1) arrancando desde 0, calle libre (limite 13.9 m/s = 50 km/h):")
-    carro = Carro(red, red.aristas["0_0->1_0"], carril=1, s=0.0, v=0.0)
-    for paso in range(1, 151):
-        carro.step(dt)
-        if paso % 10 == 0:
-            print(f"   t={paso * dt:4.1f}s  v={carro.v:5.2f} m/s  ({carro.v * 3.6:4.1f} km/h)")
-
-    print("2) a 50 km/h, hay un carro DETENIDO 60 m adelante:")
+    # un agente semaforo por cada interseccion (menos la glorieta)
+    semaforos = {n: Semaforo(n, desfase=14.0) for n in red.nodos if not red.es_glorieta(n)}
     carro = Carro(red, red.aristas["0_0->1_0"], carril=1, s=0.0, v=13.9)
-    x = 0.0
-    for paso in range(1, 151):
-        acc = carro.acel_idm(gap=60.0 - x, v_lider=0.0)
-        carro.v = max(0.0, carro.v + acc * dt)
-        x += carro.v * dt
+    for paso in range(1, 301):
+        carro.step(dt, semaforos)
         if paso % 10 == 0:
-            print(f"   t={paso * dt:4.1f}s  v={carro.v:5.2f} m/s  acel={acc:6.2f} m/s2  distancia libre={60.0 - x:5.1f} m")        
-        
+            if carro.en_cruce():
+                donde = "cruzando"
+            else:
+                info = red.semaforo_de_arista(carro.arista)
+                luz = "ninguna" if info is None else semaforos[info["interseccion"]].estado(info["grupo_fase"])
+                donde = f"{carro.arista['id']}  luz={luz:<8} faltan {carro.arista['longitud'] - carro.s:4.1f} m"
+            print(f"t={paso * dt:4.1f}s  v={carro.v:5.2f} m/s  {donde}")
+        for sem in semaforos.values():
+            sem.step(dt)                            # los semaforos tambien viven en el tiempo        
     
