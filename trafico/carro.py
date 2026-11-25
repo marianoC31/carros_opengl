@@ -10,14 +10,14 @@ Estado del carro:
     SIn OPENGL
 """
 
-import random
 import math
+import agentpy as ap
 
 from trafico.red import Red, longitudes_acumuladas, punto_en_curva
 from trafico.semaforo import AMARILLO, ROJO, Semaforo
 
 
-class Carro:
+class Carro(ap.Agent):
     LARGO = 4.2 #metros
     
     A_MAX = 2.5
@@ -26,15 +26,15 @@ class Carro:
     T_SEG = 1.2
     
     
-    def __init__(self, red, arista, carril, s, v = 8.0):
-        self.red = red
+    def setup(self, arista, carril, s, v = 8.0):
+        self.red = self.model.red
         self.arista = arista
         self.carril = carril
         self.s = s
         self.v = v
         self.cruce = None
         self.factor_vel = 1.0 # 1.0 respeta limite, 1.2 va mas rápido
-        self.pos, self.yaw = red.punto_en_carril(arista, carril, s)
+        self.pos, self.yaw = self.red.punto_en_carril(arista, carril, s)
         
     def en_cruce(self):
         return self.cruce is not None
@@ -128,7 +128,7 @@ class Carro:
     
     def _entrar_al_cruce(self):
         sobra = self.s - self.arista["longitud"]
-        sig = random.choice(self.red.opciones_en_cruce(self.arista))
+        sig = self.model.random.choice(self.red.opciones_en_cruce(self.arista))
         
         pts = self.red.curva_en_cruce(self.arista, self.carril, sig, self.carril)
         self.cruce = {"pts": pts, "acum": longitudes_acumuladas(pts), "sig":sig}
@@ -149,13 +149,14 @@ class Carro:
         else:
             self.pos, self.yaw = self.red.punto_en_carril(self.arista, self.carril, self.s)
 if __name__ == "__main__":
-    random.seed(1)
-    red = Red()
+    modelo = ap.Model()             # un modelo "de prueba": solo para darle a los carros un mapa
+    modelo.red = Red()
+    modelo.random.seed(1)
     dt = 0.1
-    calle = red.aristas["0_0->1_0"]
-    lento = Carro(red, calle, carril=1, s=25.0, v=5.0)
-    lento.factor_vel = 5.0 / 13.9               # este conductor quiere ir a 5 m/s (18 km/h)
-    rapido = Carro(red, calle, carril=1, s=0.0, v=13.9)
+    calle = modelo.red.aristas["0_0->1_0"]
+    lento = Carro(modelo, arista=calle, carril=1, s=25.0, v=5.0)
+    lento.factor_vel = 5.0 / 13.9
+    rapido = Carro(modelo, arista=calle, carril=1, s=0.0, v=13.9)
     carros = [lento, rapido]
     for paso in range(1, 151):
         for c in carros:
@@ -163,4 +164,4 @@ if __name__ == "__main__":
         if paso % 10 == 0:
             gap, _ = rapido._ver_lider(carros)
             dist = "nadie enfrente" if gap is None else f"distancia libre {gap:5.1f} m"
-            print(f"t={paso * dt:4.1f}s  rapido v={rapido.v:5.2f}  lento v={lento.v:4.2f}  {dist}")    
+            print(f"t={paso * dt:4.1f}s  rapido v={rapido.v:5.2f}  lento v={lento.v:4.2f}  {dist}")
