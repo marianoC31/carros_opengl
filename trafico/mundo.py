@@ -49,6 +49,10 @@ class Mundo(ap.Model):
                                   v = self.random.uniform(5,10)))
         return carros
     def step(self):
+        """paso de tiempo"""
+        self.semaforos.step(self.dt)
+        self.carros.step(self.dt, self.semaforo_de_nodo, self.carros)
+    def update(self):
         """despues de cada paso anotar datos"""
         n = len(self.carros)
         self.record("segundos", self.t * self.dt)
