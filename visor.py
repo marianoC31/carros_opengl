@@ -1,25 +1,25 @@
 """
-Visor + simulacion multiagente basica (Python + PyOpenGL + pygame).
-  pip install pygame PyOpenGL
-  python visor.py                      # ventana interactiva
-  python visor.py --carros 80          # cantidad de autos
-Controles: flechas = orbitar camara, W/S = acercar/alejar, A/D = subir/bajar, ESPACIO = pausa, ESC = salir
+visor.py - Dibuja con open GL el mundo de la simulación.
 
-Agentes:
-  * Semaforo  -> ciclo de fases por interseccion (eje X / eje Z), con desfase entre intersecciones
-  * Carro     -> sigue su carril, guarda distancia con el de enfrente, frena en rojo/amarillo,
-                 cambia de carril si el de enfrente va lento, decide ruta al llegar a cada interseccion,
-                 y circula la glorieta en sentido antihorario.
+La lógica de agente vive en trafico / agentpy y este archivo solo dibuja lo que hay en el mundo.
+    python visor.py
+    python visor.py --carros 80
+    python visor.py --semilla 1
+    Controles: flechas = orbitar camara, W/S = acercar/alejar, ESPACIO = pausa, ESC = salir
 """
-import argparse, json, math, os, random, sys
+import argparse, math, os
 import pygame
 from pygame.locals import DOUBLEBUF, OPENGL, QUIT, KEYDOWN, K_ESCAPE, K_SPACE
 from OpenGL.GL import *
 
+from trafico.mundo import Mundo
+from trafico.semaforo import AMARILLO, ROJO, VERDE
+
 # carpetas del proyecto (calculadas desde este archivo, asi funciona desde cualquier directorio)
 RAIZ = os.path.dirname(os.path.abspath(__file__))
 MODELOS = os.path.join(RAIZ, "modelos")
-DATOS = os.path.join(RAIZ, "datos")
+
+DT = 1/30
 
 
 # =====================================================================
@@ -85,274 +85,23 @@ class ObjModel:
         glEndList()
         return lista
 
+COLORES = [(0.8,0.1,0.1),(0.1,0.3,0.8),(0.9,0.9,0.9),(0.15,0.15,0.15),
+           (0.95,0.75,0.1),(0.2,0.6,0.3),(0.6,0.6,0.65), (0.5,0.1,0.5)]
+RADIO_LLANTA = 0.35
+LLANTAS_POS = ((-0.95,0.35,1.3),(0.95,0.35,1.3),(-0.95,0.35,-1.3),(0.95,0.35,-1.3))
 
-# =====================================================================
-# Agentes
-# =====================================================================
-VERDE, AMARILLO, ROJO = "verde", "amarillo", "rojo"
-T_VERDE, T_AMARILLO, T_TODO_ROJO = 12.0, 3.0, 1.5
-CICLO = 2 * (T_VERDE + T_AMARILLO + T_TODO_ROJO)
-
-
-class AgenteSemaforo:
-    """Controla una interseccion: fase 'x' (calles en eje X) y fase 'z'."""
-    def __init__(self, nodo_id, desfase):
-        self.id = nodo_id
-        self.t = desfase
-
-    def step(self, dt):
-        self.t = (self.t + dt) % CICLO
-
-    def estado(self, eje):
-        t = self.t if eje == "x" else (self.t + CICLO / 2) % CICLO
-        if t < T_VERDE:
-            return VERDE
-        if t < T_VERDE + T_AMARILLO:
-            return AMARILLO
-        return ROJO
-
-
-def lerp(a, b, t):
-    return [a[k] + (b[k] - a[k]) * t for k in range(3)]
-
-
-def polilinea_longitudes(pts):
-    acum = [0.0]
-    for k in range(1, len(pts)):
-        acum.append(acum[-1] + math.dist(pts[k - 1], pts[k]))
-    return acum
-
-
-def punto_en_polilinea(pts, acum, s):
-    s = max(0.0, min(s, acum[-1]))
-    for k in range(1, len(acum)):
-        if s <= acum[k]:
-            t = (s - acum[k - 1]) / max(1e-9, acum[k] - acum[k - 1])
-            p = lerp(pts[k - 1], pts[k], t)
-            d = [pts[k][i] - pts[k - 1][i] for i in range(3)]
-            return p, math.degrees(math.atan2(d[0], d[2]))
-    d = [pts[-1][i] - pts[-2][i] for i in range(3)]
-    return list(pts[-1]), math.degrees(math.atan2(d[0], d[2]))
-
-
-class AgenteCarro:
-    LARGO = 4.2
-    RADIO_LLANTA = 0.35
-    LLANTAS_POS = ((-0.95, 0.35, 1.3), (0.95, 0.35, 1.3), (-0.95, 0.35, -1.3), (0.95, 0.35, -1.3))
-    DIST_MIN = 2.5          # separacion minima (m)
-    T_SEG = 1.2             # tiempo de seguridad (s)
-    A_MAX, B_COMODO = 2.5, 4.0
-
-    def __init__(self, sim, arista, carril, s, color):
-        self.sim = sim
-        self.arista, self.carril, self.s = arista, carril, s
-        self.v = random.uniform(5, 10)
-        self.vmax = arista["vel_max"] * random.uniform(0.8, 1.1)
-        self.color = color
-        self.en_cruce = None      # (pts, acum, arista_sig, carril_sig) mientras cruza la interseccion
-        self.cambio = 1.0         # 0..1 progreso visual del cambio de carril
-        self.carril_prev = carril
-        self.pos, self.yaw = [0, 0, 0], 0.0
-        self.ang_llanta, self.steer = 0.0, 0.0
-
-    # ---------- percepcion ----------
-    def lider(self):
-        """distancia y velocidad del auto de enfrente en el mismo carril (o en su cruce)"""
-        mejor, vel = 1e9, None
-        for o in self.sim.carros:
-            if o is self:
-                continue
-            if self.en_cruce:
-                if o.en_cruce and o.en_cruce[2] is self.en_cruce[2] and o.en_cruce[3] == self.en_cruce[3] and o.s > self.s:
-                    d = o.s - self.s
-                elif o.arista is self.en_cruce[2] and o.carril == self.en_cruce[3] and not o.en_cruce:
-                    d = (self.en_cruce[1][-1] - self.s) + o.s
-                else:
-                    continue
-            else:
-                if o.arista is self.arista and o.carril == self.carril and not o.en_cruce and o.s > self.s:
-                    d = o.s - self.s
-                else:
-                    continue
-            if d < mejor:
-                mejor, vel = d, o.v
-        return mejor - self.LARGO, vel
-
-    def hueco_en(self, carril):
-        adelante, atras = 1e9, 1e9
-        for o in self.sim.carros:
-            if o is self or o.en_cruce or o.arista is not self.arista or o.carril != carril:
-                continue
-            d = o.s - self.s
-            if d >= 0:
-                adelante = min(adelante, d)
-            else:
-                atras = min(atras, -d)
-        return adelante, atras
-
-    # ---------- decision ----------
-    def acel_idm(self, gap, v_lider):
-        """Intelligent Driver Model (simplificado)"""
-        libre = 1 - (self.v / self.vmax) ** 4
-        if v_lider is None:
-            return self.A_MAX * libre
-        dv = self.v - v_lider
-        s_star = self.DIST_MIN + max(0, self.v * self.T_SEG + self.v * dv / (2 * math.sqrt(self.A_MAX * self.B_COMODO)))
-        return self.A_MAX * (libre - (s_star / max(gap, 0.1)) ** 2)
-
-    def elegir_siguiente(self):
-        """decision de ruta: al azar entre las aristas salientes (sin vuelta en U)"""
-        destino = self.arista["destino"]
-        opciones = [a for a in self.sim.salientes[destino] if a["destino"] != self.arista["origen"]]
-        return random.choice(opciones or self.sim.salientes[destino])
-
-    def construir_cruce(self, sig, carril_sig):
-        a = self.arista["carriles"][self.carril]["fin"]
-        b = sig["carriles"][carril_sig]["inicio"]
-        nodo = self.sim.nodos[self.arista["destino"]]
-        if nodo["tipo"] == "glorieta":
-            g = self.sim.red["glorieta"]
-            cx, _, cz = g["centro"]
-            r = g["radios_carriles"][1]
-            t0 = math.atan2(a[2] - cz, a[0] - cx)
-            t1 = math.atan2(b[2] - cz, b[0] - cx)
-            dt = (t0 - t1) % (2 * math.pi)        # sentido antihorario visto desde arriba = theta decrece
-            if dt < 0.3:
-                dt += 2 * math.pi
-            pts = [a]
-            n = max(4, int(dt * 8))
-            for k in range(n + 1):
-                th = t0 - dt * k / n
-                pts.append([cx + r * math.cos(th), 0.0, cz + r * math.sin(th)])
-            pts.append(b)
-        else:
-            # curva de Bezier cuadratica; el punto de control es el cruce de las dos rectas de carril
-            d1, d2 = self.arista["direccion"], sig["direccion"]
-            cruz = d1[0] * d2[2] - d1[2] * d2[0]
-            if abs(cruz) < 1e-6:     # recto
-                ctrl = lerp(a, b, 0.5)
-            else:
-                t = ((b[0] - a[0]) * d2[2] - (b[2] - a[2]) * d2[0]) / cruz
-                ctrl = [a[0] + d1[0] * t, 0.0, a[2] + d1[2] * t]
-            pts = []
-            for k in range(13):
-                u = k / 12
-                pts.append([(1 - u) ** 2 * a[i] + 2 * (1 - u) * u * ctrl[i] + u * u * b[i] for i in range(3)])
-        return pts, polilinea_longitudes(pts), sig, carril_sig
-
-    def step(self, dt):
-        gap, v_lider = self.lider()
-        acc = self.acel_idm(gap, v_lider)
-
-        if not self.en_cruce:
-            L = self.arista["longitud"]
-            restante = L - self.s
-            # semaforo: tratar la linea de alto como un auto detenido
-            sem = self.sim.semaforo_de(self.arista)
-            if sem:
-                estado = sem.estado(self.sim.eje_de[self.arista["id"]])
-                frenado = self.v * self.v / (2 * self.B_COMODO)
-                if estado == ROJO or (estado == AMARILLO and restante > frenado + 1):
-                    acc = min(acc, self.acel_idm(restante - 0.5, 0.0))
-            elif self.sim.nodos[self.arista["destino"]]["tipo"] == "glorieta":
-                acc = min(acc, self.A_MAX * (1 - (self.v / 7.0) ** 2))   # reducir para entrar a la glorieta
-
-            # cambio de carril si el de enfrente va lento
-            if self.cambio >= 1.0 and v_lider is not None and gap < 20 and v_lider < self.v - 0.5 and 10 < self.s < L - 20:
-                otro = 1 - self.carril
-                adelante, atras = self.hueco_en(otro)
-                if adelante > gap + 10 and atras > 12:
-                    self.carril_prev, self.carril, self.cambio = self.carril, otro, 0.0
-
-        self.v = max(0.0, self.v + acc * dt)
-        self.s += self.v * dt
-        self.cambio = min(1.0, self.cambio + dt / 2.0)
-
-        if not self.en_cruce and self.s >= self.arista["longitud"]:
-            sobra = self.s - self.arista["longitud"]
-            sig = self.elegir_siguiente()
-            self.en_cruce = self.construir_cruce(sig, self.carril)
-            self.s = sobra
-            self.cambio = 1.0
-        if self.en_cruce and self.s >= self.en_cruce[1][-1]:
-            sobra = self.s - self.en_cruce[1][-1]
-            _, _, sig, carril = self.en_cruce
-            self.arista, self.carril, self.carril_prev, self.s = sig, carril, carril, sobra
-            self.en_cruce = None
-
-        yaw_prev = self.yaw
-        self._actualizar_pose()
-        self.ang_llanta = (self.ang_llanta + math.degrees(self.v * dt / self.RADIO_LLANTA)) % 360.0
-        dyaw = (self.yaw - yaw_prev + 180.0) % 360.0 - 180.0
-        objetivo = max(-30.0, min(30.0, (dyaw / dt) * 0.6)) if dt > 0 and self.v > 0.2 else 0.0
-        self.steer += (objetivo - self.steer) * min(1.0, 10.0 * dt)
-
-    def _actualizar_pose(self):
-        if self.en_cruce:
-            self.pos, self.yaw = punto_en_polilinea(self.en_cruce[0], self.en_cruce[1], self.s)
-            return
-        L = self.arista["longitud"]
-        u = self.s / L
-        c_new = self.arista["carriles"][self.carril]
-        c_old = self.arista["carriles"][self.carril_prev]
-        p_new = lerp(c_new["inicio"], c_new["fin"], u)
-        p_old = lerp(c_old["inicio"], c_old["fin"], u)
-        k = 0.5 - 0.5 * math.cos(math.pi * self.cambio)
-        self.pos = lerp(p_old, p_new, k)
-        d = self.arista["direccion"]
-        self.yaw = math.degrees(math.atan2(d[0], d[2]))
-        if k < 1:   # inclinar un poco el auto mientras cambia de carril
-            lado = 1 if self.carril > self.carril_prev else -1
-            self.yaw -= lado * 8 * math.sin(math.pi * k)
-
-
-# =====================================================================
-# Simulacion
-# =====================================================================
-class Simulacion:
-    COLORES = [(0.8, 0.1, 0.1), (0.1, 0.3, 0.8), (0.9, 0.9, 0.9), (0.15, 0.15, 0.15),
-               (0.95, 0.75, 0.1), (0.2, 0.6, 0.3), (0.6, 0.6, 0.65), (0.5, 0.1, 0.5)]
-
-    def __init__(self, red, n_carros):
-        self.red = red
-        self.nodos = {n["id"]: n for n in red["nodos"]}
-        self.salientes = {}
-        for a in red["aristas"]:
-            self.salientes.setdefault(a["origen"], []).append(a)
-        self.eje_de = {}
-        self.sem_de_arista = {}
-        self.semaforos = {}
-        for n in red["nodos"]:
-            if n["tipo"] == "semaforo":
-                i, j = map(int, n["id"].split("_"))
-                self.semaforos[n["id"]] = AgenteSemaforo(n["id"], desfase=(i + j) * 4.0)   # "onda verde"
-        for s in red["semaforos"]:
-            self.eje_de[s["controla_arista"]] = s["grupo_fase"]
-            self.sem_de_arista[s["controla_arista"]] = self.semaforos[s["interseccion"]]
-        # colocar autos sin que se encimen
-        self.carros = []
-        ocupados = set()
-        intentos = 0
-        while len(self.carros) < n_carros and intentos < 10000:
-            intentos += 1
-            a = random.choice(red["aristas"])
-            carril = random.randint(0, 1)
-            s = random.uniform(2, a["longitud"] - 8)
-            celda = (a["id"], carril, int(s // 9))
-            if celda in ocupados:
-                continue
-            ocupados.add(celda)
-            self.carros.append(AgenteCarro(self, a, carril, (s // 9) * 9 + 2, random.choice(self.COLORES)))
-
-    def semaforo_de(self, arista):
-        return self.sem_de_arista.get(arista["id"])
-
-    def step(self, dt):
-        for s in self.semaforos.values():
-            s.step(dt)
-        random.shuffle(self.carros)
-        for c in self.carros:
-            c.step(dt)
+def animar_llantas(estado, c, dt):
+    """cuanto han rodado las llantas del carro 'c' y hacia donde apuntan las 
+        delanteras(grados).
+        'estado' guarda, por id de carro: (rdado, direccion, yaw del cuadro anerior)
+    """
+    rodado, direccion, yaw_antes = estado.get(c.id,(0.0,0.0,c.yaw))
+    rodado = (rodado + math.degrees(c.v*dt / RADIO_LLANTA)) % 360 #angulo = distancia / radio
+    dyaw = (c.yaw - yaw_antes + 180) % 360 - 180 #cuanto giro el carro
+    objetivo = max(-30.0, min(30.0, dyaw / dt * 0.6)) if c.v > 0.2 else 0.0
+    direccion += (objetivo - direccion) * min(1.0, 10 * dt) #mover suavemente
+    estado[c.id] = (rodado, direccion, c.yaw)
+    return rodado, direccion
 
 
 # =====================================================================
@@ -378,6 +127,7 @@ def mirar_a(ojo, centro, arriba):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--carros", type=int, default=70)
+    ap.add_argument("--semilla", type=int, default = None, help = "misma semilla -> misma simulacion")
     ap.add_argument("--ancho", type=int, default=1280)
     ap.add_argument("--alto", type=int, default=720)
     ap.add_argument("--captura", help="guardar una imagen y salir (para pruebas)")
@@ -410,33 +160,34 @@ def main():
     L_sem_base = semaforo.compilar({"poste", "caja_semaforo"})
     L_luz = {m: semaforo.compilar({m}, con_color=False) for m in ("luz_roja", "luz_amarilla", "luz_verde")}
 
-    red = json.load(open(os.path.join(DATOS, "red_vial.json")))
-    sim = Simulacion(red, args.carros)
+    mundo = Mundo({"n_carros": args.carros, "dt":DT, "seed": args.semilla})
+    mundo.sim_setup()
+    llantas = {}
+    
 
     rot, elev, dist = map(float, args.camara.split(","))
     foco = tuple(map(float, args.foco.split(",")))
     reloj = pygame.time.Clock()
     pausa = False
     t_sim = 0.0
-    dt_fijo = 1 / 30
+    
 
     while True:
-        if args.captura:
-            dt = dt_fijo
-        else:
-            dt = min(reloj.tick(60) / 1000.0, 0.05)
-            for e in pygame.event.get():
-                if e.type == QUIT or (e.type == KEYDOWN and e.key == K_ESCAPE):
-                    pygame.quit(); return
-                if e.type == KEYDOWN and e.key == K_SPACE:
-                    pausa = not pausa
-            k = pygame.key.get_pressed()
-            rot += (k[pygame.K_RIGHT] - k[pygame.K_LEFT]) * 60 * dt
-            elev = max(5, min(89, elev + (k[pygame.K_UP] - k[pygame.K_DOWN]) * 40 * dt))
-            dist = max(20, min(600, dist + (k[pygame.K_s] - k[pygame.K_w]) * 150 * dt))
+        dt = DT
+        if not args.captura:
+            reloj.tick(30)
+        for e in pygame.event.get():
+            if e.type == QUIT or (e.type == KEYDOWN and e.key == K_ESCAPE):
+                pygame.quit(); return
+            if e.type == KEYDOWN and e.key == K_SPACE:
+                pausa = not pausa
+        k = pygame.key.get_pressed()
+        rot += (k[pygame.K_RIGHT] - k[pygame.K_LEFT]) * 60 * dt
+        elev = max(5, min(89, elev + (k[pygame.K_UP] - k[pygame.K_DOWN]) * 40 * dt))
+        dist = max(20, min(600, dist + (k[pygame.K_s] - k[pygame.K_w]) * 150 * dt))
 
         if not pausa:
-            sim.step(dt)
+            mundo.sim_step()
             t_sim += dt
 
         if args.captura and t_sim < args.segundos:
@@ -454,8 +205,8 @@ def main():
 
         glCallList(L_ciudad)
 
-        for s in red["semaforos"]:
-            agente = sim.semaforos[s["interseccion"]]
+        for s in mundo.red.semaforos:
+            agente = mundo.semaforo_de_nodo[s["interseccion"]]
             estado = agente.estado(s["grupo_fase"])
             glPushMatrix()
             glTranslatef(*s["pos"]); glRotatef(s["yaw_grados"], 0, 1, 0)
@@ -466,18 +217,19 @@ def main():
                 glCallList(L_luz[mat])
             glPopMatrix()
 
-        for c in sim.carros:
+        for c in mundo.carros:
+            rodando, direccion = animar_llantas(llantas, c, dt)
             glPushMatrix()
             glTranslatef(*c.pos); glRotatef(c.yaw, 0, 1, 0)
-            glColor3f(*c.color)
+            glColor3f(*COLORES[c.id % len(COLORES)])
             glCallList(L_carro_cuerpo)
             glCallList(L_carro_resto)
-            for wx, wy, wz in c.LLANTAS_POS:
+            for wx, wy, wz in LLANTAS_POS:
                 glPushMatrix()
                 glTranslatef(wx, wy, wz)
                 if wz > 0:
-                    glRotatef(c.steer, 0, 1, 0)
-                glRotatef(c.ang_llanta, 1, 0, 0)
+                    glRotatef(direccion, 0, 1, 0)
+                glRotatef(rodando, 1, 0, 0)
                 glCallList(L_llanta)
                 glPopMatrix()
             glPopMatrix()
