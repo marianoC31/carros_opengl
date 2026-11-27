@@ -11,6 +11,8 @@ from trafico.red import Red
 
 from trafico.semaforo import Semaforo
 
+from trafico.colisiones import detectar_contactos
+
 class Mundo(ap.Model):
     def setup(self):
         """Se llama una vez al empezar: crear mapa"""
@@ -27,6 +29,10 @@ class Mundo(ap.Model):
         
         self.carros = ap.AgentList(self,
                                    self._colocar_carros(self.p.get("n_carros", 70)))
+        self.carro_por_id = {c.id: c for c in self.carros}
+        self.contactos = set()
+        self.choques_total = 0
+        
     def _desfase(self, nodo_id):
         """desfase de semaforos por intersecciones }"""
         i, j = map(int, nodo_id.split("_"))
@@ -52,6 +58,18 @@ class Mundo(ap.Model):
         """paso de tiempo"""
         self.semaforos.step(self.dt)
         self.carros.step(self.dt, self.semaforo_de_nodo, self.carros)
+        self._revisar_choques()
+        
+    def _revisar_choques(self):
+        """buscar parejas que empezaron a tocarse y hacer chocar"""
+        ahora = detectar_contactos(self.carros)
+        nuevos = ahora - self.contactos
+        for id_a, id_b in nuevos:
+            self.carro_por_id[id_a].chocar()
+            self.carro_por_id[id_b].chocar()
+        self.choques_total += len(nuevos)
+        self.contactos = ahora
+        
     def update(self):
         """despues de cada paso anotar datos"""
         n = len(self.carros)
@@ -61,17 +79,21 @@ class Mundo(ap.Model):
         
         self.record("cruzando", sum(1 for c in self.carros if c.en_cruce()))
         
+        self.record("chocados", sum(1 for c in self.carros if c.esta_chocado()))
+        self.record("choques_total", self.choques_total)
+        
     def end(self):
         """al terminar: resultados finales"""
         self.report("carros", len(self.carros))
         self.report("semaforos", len(self.semaforos))
-
+        self.report("choques_total", self.choques_total)
+        
 if __name__ == "__main__":
-    parametros = {"n_carros": 80, "dt": 0.1, "steps": 600, "seed": 1}   # 600 pasos x 0.1 s = 60 s
+    parametros = {"n_carros": 80, "dt": 0.1, "steps": 3000, "seed": 1}   # 600 pasos x 0.1 s = 60 s
     mundo = Mundo(parametros)
     resultados = mundo.run(display=False)
     datos = resultados.variables.Mundo          # tabla con todo lo que se anoto en update()
-    print(datos.iloc[::100].round(1))           # una fila cada 100 pasos (cada 10 s)
+    print(datos.iloc[::300].round(1))           # una fila cada 100 pasos (cada 10 s)
     print()
     print(resultados.reporters)
     print("tiempo real:", resultados.info["run_time"])
