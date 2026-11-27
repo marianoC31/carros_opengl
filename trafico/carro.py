@@ -24,7 +24,7 @@ class Carro(ap.Agent):
     B_COMODO = 4.0
     DIST_MIN = 2.5
     T_SEG = 1.2
-    
+    T_CHOQUE = 10.0 #Segundos que se queda despues de chocar
     
     def setup(self, arista, carril, s, v = 8.0):
         self.red = self.model.red
@@ -33,9 +33,21 @@ class Carro(ap.Agent):
         self.s = s
         self.v = v
         self.cruce = None
+        self.t_chocado = 0.0
+        self.choques = 0
         self.factor_vel = 1.0 # 1.0 respeta limite, 1.2 va mas rápido
         self.pos, self.yaw = self.red.punto_en_carril(arista, carril, s)
+    
+    def chocar(self):
+        """el mudno avisa que chocaste: se detiene y esperas T_CHOQUE"""
         
+        self.choques += 1
+        self.t_chocado = self.T_CHOQUE
+        self.v = 0.0
+        
+    def esta_chocado(self):
+        return self.t_chocado>0
+     
     def en_cruce(self):
         return self.cruce is not None
     
@@ -106,6 +118,9 @@ class Carro(ap.Agent):
     
     
     def step(self, dt, semaforos = None, carros = None):
+        if self.esta_chocado():
+            self.t_chocado = max(0.0, self.t_chocado -dt)
+            return
         acc = self.acel_idm()
         if carros:
             gap, v_lider = self._ver_lider(carros)
@@ -149,19 +164,22 @@ class Carro(ap.Agent):
         else:
             self.pos, self.yaw = self.red.punto_en_carril(self.arista, self.carril, self.s)
 if __name__ == "__main__":
-    modelo = ap.Model()             # un modelo "de prueba": solo para darle a los carros un mapa
+    modelo = ap.Model()
     modelo.red = Red()
     modelo.random.seed(1)
     dt = 0.1
     calle = modelo.red.aristas["0_0->1_0"]
-    lento = Carro(modelo, arista=calle, carril=1, s=25.0, v=5.0)
-    lento.factor_vel = 5.0 / 13.9
-    rapido = Carro(modelo, arista=calle, carril=1, s=0.0, v=13.9)
-    carros = [lento, rapido]
-    for paso in range(1, 151):
+    adelante = Carro(modelo, arista=calle, carril=1, s=20.0, v=8.0)
+    atras = Carro(modelo, arista=calle, carril=1, s=5.0, v=8.0)
+    carros = [adelante, atras]
+    for paso in range(1, 161):
+        if paso == 10:
+            adelante.chocar()                   # simulamos que el de adelante choco
+            print("   *** t=1.0s: el de adelante choca ***")
         for c in carros:
             c.step(dt, carros=carros)
         if paso % 10 == 0:
-            gap, _ = rapido._ver_lider(carros)
-            dist = "nadie enfrente" if gap is None else f"distancia libre {gap:5.1f} m"
-            print(f"t={paso * dt:4.1f}s  rapido v={rapido.v:5.2f}  lento v={lento.v:4.2f}  {dist}")
+            gap, _ = atras._ver_lider(carros)
+            estado = f"CHOCADO (faltan {adelante.t_chocado:4.1f} s)" if adelante.esta_chocado() else "libre"
+            print(f"t={paso * dt:4.1f}s  adelante v={adelante.v:5.2f} {estado:<24} atras v={atras.v:5.2f}  distancia {gap:5.1f} m")
+    print("choques: adelante", adelante.choques, "| atras", atras.choques)
