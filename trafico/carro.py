@@ -37,7 +37,8 @@ class Carro(ap.Agent):
         self.choques = 0
         self.factor_vel = 1.0 # 1.0 respeta limite, 1.2 va mas rápido
         self.pos, self.yaw = self.red.punto_en_carril(arista, carril, s)
-    
+        self._planear_vuelta()
+        
     def chocar(self):
         """el mudno avisa que chocaste: se detiene y esperas T_CHOQUE"""
         
@@ -141,20 +142,35 @@ class Carro(ap.Agent):
         
     #----cambios de modo
     
+    def _planear_vuelta(self):
+        """al entrar a una calle: decidir a donde voy a dar vuelta al final de ella"""
+        opciones = self.red.opciones_en_cruce(self.arista)
+        permitidas = [o for o in opciones if self._vuelta_permitida(o)]
+        sig = self.model.random.choice(permitidas or opciones)     # por ahora al azar (luego: aprendiendo)
+        pts = self.red.curva_en_cruce(self.arista, self.carril, sig, self.carril)
+        self.plan = {"pts": pts, "acum": longitudes_acumuladas(pts), "sig": sig}
+
+    def _vuelta_permitida(self, sig):
+        """carril 0 (izquierdo): derecho o izquierda.  carril 1 (derecho): derecho o derecha"""
+        d1, d2 = self.arista["direccion"], sig["direccion"]
+        cruz = d1[0] * d2[2] - d1[2] * d2[0]
+        if abs(cruz) < 1e-6:
+            return True                     # seguir derecho: se puede desde cualquier carril
+        if cruz > 0:
+            return self.carril == 1         # vuelta a la derecha: solo desde el carril derecho
+        return self.carril == 0             # vuelta a la izquierda: solo desde el carril izquierdo
+
     def _entrar_al_cruce(self):
         sobra = self.s - self.arista["longitud"]
-        sig = self.model.random.choice(self.red.opciones_en_cruce(self.arista))
-        
-        pts = self.red.curva_en_cruce(self.arista, self.carril, sig, self.carril)
-        self.cruce = {"pts": pts, "acum": longitudes_acumuladas(pts), "sig":sig}
+        self.cruce = self.plan              # la curva ya estaba planeada
         self.s = sobra
-        
+
     def _salir_del_cruce(self):
         sobra = self.s - self.cruce["acum"][-1]
         self.arista = self.cruce["sig"]
         self.cruce = None
         self.s = sobra
-    
+        self._planear_vuelta()              # calle nueva -> planear la siguiente vuelta
     #--dibujarlo---
     
     def _actualizar_pose(self):
@@ -164,22 +180,22 @@ class Carro(ap.Agent):
         else:
             self.pos, self.yaw = self.red.punto_en_carril(self.arista, self.carril, self.s)
 if __name__ == "__main__":
+    import collections
     modelo = ap.Model()
     modelo.red = Red()
     modelo.random.seed(1)
-    dt = 0.1
-    calle = modelo.red.aristas["0_0->1_0"]
-    adelante = Carro(modelo, arista=calle, carril=1, s=20.0, v=8.0)
-    atras = Carro(modelo, arista=calle, carril=1, s=5.0, v=8.0)
-    carros = [adelante, atras]
-    for paso in range(1, 161):
-        if paso == 10:
-            adelante.chocar()                   # simulamos que el de adelante choco
-            print("   *** t=1.0s: el de adelante choca ***")
-        for c in carros:
-            c.step(dt, carros=carros)
-        if paso % 10 == 0:
-            gap, _ = atras._ver_lider(carros)
-            estado = f"CHOCADO (faltan {adelante.t_chocado:4.1f} s)" if adelante.esta_chocado() else "libre"
-            print(f"t={paso * dt:4.1f}s  adelante v={adelante.v:5.2f} {estado:<24} atras v={atras.v:5.2f}  distancia {gap:5.1f} m")
-    print("choques: adelante", adelante.choques, "| atras", atras.choques)
+    calle = modelo.red.aristas["1_1->2_1"]          # llega a 2_1: puede ir derecho, derecha o izquierda
+
+    def tipo_de_vuelta(c):
+        d1, d2 = c.arista["direccion"], c.plan["sig"]["direccion"]
+        cruz = d1[0] * d2[2] - d1[2] * d2[0]
+        if abs(cruz) < 1e-6:
+            return "derecho"
+        return "derecha" if cruz > 0 else "izquierda"
+
+    for carril in (0, 1):
+        cuenta = collections.Counter()
+        for _ in range(300):
+            c = Carro(modelo, arista=calle, carril=carril, s=0.0)     # setup ya planea su vuelta
+            cuenta[tipo_de_vuelta(c)] += 1
+        print("carril", carril, "->", dict(cuenta))
