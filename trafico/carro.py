@@ -15,7 +15,7 @@ import agentpy as ap
 
 from trafico.red import Red, longitudes_acumuladas, punto_en_curva
 from trafico.semaforo import AMARILLO, ROJO, Semaforo
-
+from trafico.colisiones import RADIO, circulos, se_tocan
 
 class Carro(ap.Agent):
     LARGO = 4.2 #metros
@@ -25,6 +25,8 @@ class Carro(ap.Agent):
     DIST_MIN = 2.5
     T_SEG = 1.2
     T_CHOQUE = 10.0 #Segundos que se queda despues de chocar
+    VISTA = 25.0 #metro de mi camino
+    PASO_VISTA = 1.0
     
     def setup(self, arista, carril, s, v = 8.0):
         self.red = self.model.red
@@ -116,7 +118,42 @@ class Carro(ap.Agent):
         if mas_cerca is None:
             return None, None
         return mas_cerca - self.LARGO, v_lider
+    def _mi_camino(self):
+        """puntos de mi camino en los prox VISTA metros"""
+        puntos = []
+        d = self.PASO_VISTA
+        while d <= self.VISTA:
+            resto = self.s + d
+            if not self.en_cruce():
+                if resto <= self.arista["longitud"]:
+                    p, _ = self.red.punto_en_carril(self.arista, self.carril, resto)
+                    puntos.append((d,p[0],p[2]))
+                    d += self.PASO_VISTA
+                    continue
+                resto -= self.arista["longitud"]
+                curva = self.cruce if self.en_cruce() else self.plan
+                if resto <= curva["acum"][-1]:
+                    
+                    p, _ = punto_en_curva(curva["pts"], curva["acum"], resto)
+                else:
+                    sig = curva["sig"]
+                    p, _ = self.red.punto_en_carril(sif, self.carril, min(resto - curva["acum"][-1], sig["longitud"]))
+                    puntos.append((d,p[0],p[2]))
+                    d += self.PASO_VISTA
+        return puntos
     
+    def _ver_chocado(self, carros):
+        """distancia libre hasta el primer chocado"""
+        cercanos = [o for o in carros if o is not self and o.esta_chocado()
+                    and math.dist(self.pos, o.pos) < self.VISTA + 3 and not se_tocan(self,o)]
+        if not cercanos:
+            return None
+        for d, x, z in self._mi_camino():
+            for o in cercanos:
+                for q in circulos(o):
+                    if math.dist((x,z),q) < 2 * RADIO:
+                        return d - self.LARGO / 2 - RADIO
+        return None 
     
     def step(self, dt, semaforos = None, carros = None):
         if self.esta_chocado():
@@ -126,7 +163,10 @@ class Carro(ap.Agent):
         if carros:
             gap, v_lider = self._ver_lider(carros)
             if gap is not None:
-                acc = min(acc, self.acel_idm(gap, v_lider))     
+                acc = min(acc, self.acel_idm(gap, v_lider))
+            gap_choque = self._ver_chocado(carros)
+            if gap_choque is not None:
+                acc = min(acc, self.acel_idm(gap_choque, 0.0))
         if semaforos:
             acc_sem = self._acel_por_semaforo(semaforos)
             if acc_sem is not None:
@@ -180,22 +220,24 @@ class Carro(ap.Agent):
         else:
             self.pos, self.yaw = self.red.punto_en_carril(self.arista, self.carril, self.s)
 if __name__ == "__main__":
-    import collections
     modelo = ap.Model()
     modelo.red = Red()
-    modelo.random.seed(1)
-    calle = modelo.red.aristas["1_1->2_1"]          # llega a 2_1: puede ir derecho, derecha o izquierda
-
-    def tipo_de_vuelta(c):
-        d1, d2 = c.arista["direccion"], c.plan["sig"]["direccion"]
-        cruz = d1[0] * d2[2] - d1[2] * d2[0]
-        if abs(cruz) < 1e-6:
-            return "derecho"
-        return "derecha" if cruz > 0 else "izquierda"
-
-    for carril in (0, 1):
-        cuenta = collections.Counter()
-        for _ in range(300):
-            c = Carro(modelo, arista=calle, carril=carril, s=0.0)     # setup ya planea su vuelta
-            cuenta[tipo_de_vuelta(c)] += 1
-        print("carril", carril, "->", dict(cuenta))
+    modelo.random.seed(2)
+    dt = 0.1
+    # un carro que entra a la glorieta por el oeste...
+    yo = Carro(modelo, arista=modelo.red.aristas["1_2->2_2"], carril=1, s=0.0, v=10.0)
+    # ...y un carro que vino de OTRA calle y quedo chocado dentro de la glorieta, en mi camino
+    otro = Carro(modelo, arista=modelo.red.aristas["2_3->2_2"], carril=1, s=0.0)
+    otro.pos, otro.yaw = punto_en_curva(yo.plan["pts"], yo.plan["acum"], 12.0)
+    otro.chocar()
+    otro.t_chocado = 1000.0                         # que no se libere durante la prueba
+    carros = [yo, otro]
+    for paso in range(1, 121):
+        yo.step(dt, carros=carros)
+        if paso % 10 == 0:
+            gap_viejo, _ = yo._ver_lider(carros)
+            gap_nuevo = yo._ver_chocado(carros)
+            donde = "glorieta" if yo.en_cruce() else f"calle, faltan {yo.arista['longitud'] - yo.s:4.1f} m"
+            print(f"t={paso * dt:4.1f}s  v={yo.v:5.2f}  {donde:<22} lo ve _ver_lider: {gap_viejo}"
+                  f"  | lo ve _ver_chocado: {None if gap_nuevo is None else round(gap_nuevo, 1)}")
+    print("chocaron?", se_tocan(yo, otro))
