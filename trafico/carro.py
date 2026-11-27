@@ -131,15 +131,15 @@ class Carro(ap.Agent):
                     d += self.PASO_VISTA
                     continue
                 resto -= self.arista["longitud"]
-                curva = self.cruce if self.en_cruce() else self.plan
-                if resto <= curva["acum"][-1]:
-                    
-                    p, _ = punto_en_curva(curva["pts"], curva["acum"], resto)
-                else:
-                    sig = curva["sig"]
-                    p, _ = self.red.punto_en_carril(sif, self.carril, min(resto - curva["acum"][-1], sig["longitud"]))
-                    puntos.append((d,p[0],p[2]))
-                    d += self.PASO_VISTA
+            curva = self.cruce if self.en_cruce() else self.plan
+            if resto <= curva["acum"][-1]:
+                
+                p, _ = punto_en_curva(curva["pts"], curva["acum"], resto)
+            else:
+                sig = curva["sig"]
+                p, _ = self.red.punto_en_carril(sig, self.carril, min(resto - curva["acum"][-1], sig["longitud"]))
+            puntos.append((d,p[0],p[2]))
+            d += self.PASO_VISTA
         return puntos
     
     def _ver_chocado(self, carros):
