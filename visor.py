@@ -221,7 +221,11 @@ def main():
             rodando, direccion = animar_llantas(llantas, c, dt)
             glPushMatrix()
             glTranslatef(*c.pos); glRotatef(c.yaw, 0, 1, 0)
-            glColor3f(*COLORES[c.id % len(COLORES)])
+            if c.esta_chocado():
+                glColor3f(*((1.0,0.0,0.0) if int(c.t_chocado * 4) % 2 == 0 else
+                            (1.0,1.0,1.0)))
+            else:
+                glColor3f(*COLORES[c.id % len(COLORES)])    
             glCallList(L_carro_cuerpo)
             glCallList(L_carro_resto)
             for wx, wy, wz in LLANTAS_POS:
@@ -236,6 +240,9 @@ def main():
 
         pygame.display.flip()
 
+        if mundo.t % 15 == 0: #cada medio segundo
+            chocados = sum(1 for c in mundo.carros if c.esta_chocado())
+            pygame.display.set_caption(f"Simulación multiagente - t = {mundo.t * DT:5.0f} s | choques: {mundo.choques_total} | chocados ahora: {chocados}")
         if args.captura:
             datos = glReadPixels(0, 0, args.ancho, args.alto, GL_RGB, GL_UNSIGNED_BYTE)
             img = pygame.image.fromstring(datos, (args.ancho, args.alto), "RGB")
